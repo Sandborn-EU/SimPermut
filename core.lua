@@ -87,6 +87,7 @@ local relicCopyCount=1
 local relicString=""
 local relicComparisonTypeValue=1
 local editLink
+local voidStorageCache = {}
 
 -- Parameters
 local ITEM_COUNT_THRESHOLD 		= 22
@@ -215,6 +216,7 @@ function SimPermut:OnInitialize()
 end
 
 function SimPermut:OnEnable()
+	SimPermut:RegisterEvent("VOID_STORAGE_CLOSE")
 end
 
 function SimPermut:OnDisable()
@@ -1838,6 +1840,47 @@ function SimPermut:GetItemStrings()
 	return items,itemsLinks,pool
 end
 
+-- parse and cache the contents of the void storage after visiting a vaultkeeper
+function SimPermut:VOID_STORAGE_CLOSE()
+	voidStorageCache              = {}
+	if not IsVoidStorageReady() then return end
+	local itemID, itemLink, itemRarity, gearSlotType, gearSlot
+	local voidStorageTabSize      = 80
+	local gearSlotTypes           = {
+		["INVTYPE_HEAD"]              = "head",
+		["INVTYPE_NECK"]              = "neck",
+		["INVTYPE_SHOULDER"]          = "shoulder",
+		["INVTYPE_CLOAK"]             = "back",
+		["INVTYPE_CHEST"]             = "chest",
+		["INVTYPE_WRIST"]             = "wrist",
+		["INVTYPE_HAND"]              = "hands",
+		["INVTYPE_WAIST"]             = "waist",
+		["INVTYPE_LEGS"]              = "legs",
+		["INVTYPE_FEET"]              = "feet",
+		["INVTYPE_FINGER"]            = "finger",
+		["INVTYPE_TRINKET"]           = "trinket",
+	}
+	for voidStorageTab = 1, 2 do
+		for voidStorageSlot = 1, voidStorageTabSize do
+			itemID = GetVoidItemInfo(voidStorageTab, voidStorageSlot)
+			if itemID ~= nil then
+				itemLink     = GetVoidItemHyperlinkString(voidStorageSlot + ((voidStorageTab - 1) * voidStorageTabSize))
+				itemRarity   = select(3, GetItemInfo(itemLink))
+				gearSlotType = select(9, GetItemInfo(itemLink))
+				gearSlot     = gearSlotTypes[gearSlotType]
+				if gearSlot ~= nil then
+					table.insert(voidStorageCache, {
+						["itemID"]      = itemID,
+						["itemLink"]    = itemLink,
+						["itemRarity"]  = itemRarity,
+						["slot"]        = gearSlot,
+					})
+				end
+			end
+		end
+	end
+end
+
 -- get the list of items of a slot
 function SimPermut:GetListItem(strItem,itemLine)
 	local texture, count, locked, quality, readable, lootable, isFiltered, hasNoValue, itemId, itemLink, itemstring, ilvl, name, itemRarity
@@ -1902,7 +1945,14 @@ function SimPermut:GetListItem(strItem,itemLine)
 			end
 		end
 	end
-	
+	for k, voidItem in pairs(voidStorageCache) do
+		if voidItem["slot"] == strItem then
+			ilvl = PersoLib:GetRealIlvl(voidItem["itemLink"])
+			if (ilvl >= actualSettings.ilvl_thresholdMin and ilvl <= actualSettings.ilvl_thresholdMax) or voidItem["itemRarity"]==7 then
+				linkTable[#linkTable+1] = voidItem["itemLink"]
+			end
+		end
+	end
 	return linkTable
 end
 
